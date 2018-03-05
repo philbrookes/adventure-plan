@@ -1,0 +1,31 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>
+      Edit Pin
+    </ion-title>
+    <ion-buttons start>
+      <button ion-button (click)="dismiss()">
+       Close
+      </button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list>
+      <ion-item>
+        <input type="text" value="{{lat}}"/>
+      </ion-item>     
+      <ion-item>
+        <input type="text" value="{{lng}}"/>
+      </ion-item>
+      <ion-buttons start>
+        <button ion-button (click)="save()">
+         Save
+        </button>
+        <button ion-button (click)="dismiss()">
+          Cancel
+         </button>
+      </ion-buttons>
+  </ion-list>
+</ion-content>
