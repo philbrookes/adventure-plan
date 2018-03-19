@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { NavParams, ViewController } from 'ionic-angular';
+import { NavParams, ViewController, Events } from 'ionic-angular';
 import { MapService } from '../../providers/services/map-service';
 
 @Component({
@@ -14,7 +14,7 @@ export class PinEdit {
   notes: string;
   mapId: number;
 
-  constructor(public params: NavParams, public viewCtrl: ViewController, public mapSvc: MapService) {
+  constructor(public params: NavParams, public viewCtrl: ViewController, public mapSvc: MapService, public events: Events) {
     this.lat = params.get("lat");
     this.lng = params.get("lng");
     this.title = params.get("title");
@@ -27,7 +27,10 @@ export class PinEdit {
   }
 
   save(){
-    this.mapSvc.addPin(this.lat, this.lng, this.title, this.notes, this.mapId);
+    console.log("lat:", this.lat, "lng:", this.lng, "title:", this.title, "notes:", this.notes, "mapid:", this.mapId);
+    this.mapSvc.addPin(this.lat, this.lng, this.title, this.notes, this.mapId).then(point => {
+      this.events.publish("interests:new", point)
+    });
     this.viewCtrl.dismiss();
   }
 }

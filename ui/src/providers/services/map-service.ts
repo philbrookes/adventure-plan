@@ -41,10 +41,14 @@ export class MapService {
     });
   }
 
-  addPin(lat, lng, title, notes, mapId): Promise<Map> {
+  addPin(lat, lng, title, notes, mapId): Promise<MapPoint> {
+    let options = {headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
+    //let body = "latitude=" + lat +"&longitude=" + lng + "&title=" + title + "&notes=" + notes;
+    let body = {latitude: lat, longitude: lng, metadata: {title: title, notes: notes}};
+    
     return new Promise((resolve, reject) => {
-      this.http.post('http://localhost:8080/maps/' + mapId + "/pin", {lat: lat, lng: lng, title: title, notes: notes}).subscribe((mapData: Map) => {
-        resolve(mapData as Map);
+      this.http.post('http://localhost:8080/maps/' + mapId + "/pin", body, options).subscribe((point: MapPoint) => {
+        resolve(point as MapPoint);
       });
     });
   }
