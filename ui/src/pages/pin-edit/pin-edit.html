@@ -13,19 +13,21 @@
 
 <ion-content>
   <ion-list>
-      <ion-item>
-        <input type="text" value="{{lat}}"/>
-      </ion-item>     
-      <ion-item>
-        <input type="text" value="{{lng}}"/>
-      </ion-item>
-      <ion-buttons start>
-        <button ion-button (click)="save()">
-         Save
-        </button>
-        <button ion-button (click)="dismiss()">
-          Cancel
-         </button>
-      </ion-buttons>
+    <ion-item>
+      <ion-label color="primary">Title</ion-label>
+      <ion-input placeholder="title" [(ngModel)]="title"></ion-input>
+    </ion-item>
+    <ion-item>
+      <ion-label color="primary">Notes</ion-label>
+      <ion-textarea placeholder="Notes" [(ngModel)]="notes"></ion-textarea>
+    </ion-item>
+    <ion-buttons start>
+      <button ion-button (click)="save()">
+        Save
+      </button>
+      <button ion-button (click)="dismiss()">
+        Cancel
+      </button>
+    </ion-buttons>
   </ion-list>
 </ion-content>

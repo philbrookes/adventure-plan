@@ -1,7 +1,9 @@
 package maps
 
 import (
+	"database/sql"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 
@@ -10,7 +12,7 @@ import (
 
 //List contains an array of maps
 type List struct {
-	Maps []Map `json:"maps"`
+	Maps []*Map `json:"maps"`
 }
 
 //Map defines map data
@@ -18,7 +20,7 @@ type Map struct {
 	ID        int         `json:"id"`
 	Center    MapPoint    `json:"center"`
 	Zoom      int         `json:"zoom"`
-	Interests []MapPoint  `json:"interests"`
+	Interests []*MapPoint `json:"interests"`
 	Metadata  MapMetadata `json:"metadata"`
 }
 
@@ -29,6 +31,7 @@ type MapMetadata struct {
 
 //MapPoint defines a point on a map
 type MapPoint struct {
+	ID        int              `json:"id"`
 	Latitude  float64          `json:"latitude"`
 	Longitude float64          `json:"longitude"`
 	Metadata  MapPointMetadata `json:"metadata"`
@@ -42,108 +45,125 @@ type MapPointMetadata struct {
 
 //Maps Hander
 type Maps struct {
-	Maps List
+	db *sql.DB
 }
 
 //NewMapsHandler creates a new users handler
-func NewMapsHandler() *Maps {
+func NewMapsHandler(db *sql.DB) *Maps {
 	return &Maps{
-		Maps: List{
-			Maps: []Map{
-				Map{
-					ID: 1,
-					Center: MapPoint{
-						Latitude:  41.3937688,
-						Longitude: 2.128728,
-					},
-					Metadata: MapMetadata{
-						Title: "Barcelona",
-					},
-					Zoom: 12,
-					Interests: []MapPoint{
-						MapPoint{
-							Latitude:  41.3946688,
-							Longitude: 2.179728,
-							Metadata: MapPointMetadata{
-								Title: "Barcelona is interesting...",
-								Notes: "Suuuuuuper interesting...",
-							},
-						},
-						MapPoint{
-							Latitude:  41.3947698,
-							Longitude: 2.078733,
-							Metadata: MapPointMetadata{
-								Title: "Barcelona is more interesting...",
-								Notes: "Really suuuuuuper interesting...",
-							},
-						},
-						MapPoint{
-							Latitude:  41.3246688,
-							Longitude: 2.129728,
-							Metadata: MapPointMetadata{
-								Title: "Barcelona is really more interesting...",
-								Notes: "Really really suuuuuuper interesting...",
-							},
-						},
-					},
-				},
-				Map{
-					ID: 2,
-					Center: MapPoint{
-						Latitude:  4.3937688,
-						Longitude: 22.128728,
-					},
-					Metadata: MapMetadata{
-						Title: "Somewhere crap...",
-					},
-					Zoom:      12,
-					Interests: []MapPoint{},
-				},
-			},
-		},
+		db: db,
 	}
-
 }
 
 //ConfigureRouter to handle user related routes
 func (m *Maps) ConfigureRouter(router *mux.Router) {
 	router.HandleFunc("/", m.getMaps).Methods("GET")
 	router.HandleFunc("/{id}", m.getMap).Methods("GET")
-	router.HandleFunc("/{id}/pin", m.postPin).Methods("POST", "OPTIONS")
+	router.HandleFunc("/{id}/pin", m.postPin).Methods("POST")
 }
 
 func (m *Maps) postPin(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	id, _ := strconv.Atoi(params["id"])
-	lat, _ := strconv.Atoi(r.FormValue("latitude"))
-	lng, _ := strconv.Atoi(r.FormValue("longitude"))
 
-	mp := MapPoint{
-		Latitude:  float64(lat),
-		Longitude: float64(lng),
-		Metadata: MapPointMetadata{
-			Title: r.FormValue("title"),
-			Notes: r.FormValue("notes"),
-		},
+	b, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	newPoint := &MapPoint{Metadata: MapPointMetadata{}}
+	json.Unmarshal(b, newPoint)
+
+	stmt, err := m.db.Prepare("INSERT INTO adventureplan.points (latitude, longitude, title, notes, map_id) VALUES (?, ?, ?, ?, ?);")
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
 	}
 
-	for _, mapData := range m.Maps.Maps {
-		if mapData.ID == id {
-			mapData.Interests = append(mapData.Interests, mp)
-			w.Header().Add("Content-Type", "Application/JSON")
-			json.NewEncoder(w).Encode(mapData)
-		}
+	res, err := stmt.Exec(newPoint.Latitude, newPoint.Longitude, newPoint.Metadata.Title, newPoint.Metadata.Notes, id)
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
 	}
+
+	ID, err := res.LastInsertId()
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
+	}
+	newPoint.ID = int(ID)
+	json.NewEncoder(w).Encode(newPoint)
 }
 
 func (m *Maps) getMaps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "Application/JSON")
-	json.NewEncoder(w).Encode(m.Maps)
+	maps := List{Maps: []*Map{}}
+
+	rows, err := m.db.Query("SELECT id, center_lat, center_lng, zoom, title FROM adventureplan.maps")
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
+	}
+
+	for rows.Next() {
+		thisMap, err := loadMapFromRow(rows, m.db)
+		if err != nil {
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+		maps.Maps = append(maps.Maps, thisMap)
+	}
+	json.NewEncoder(w).Encode(maps)
 }
 
 func (m *Maps) getMap(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 
 	w.Header().Add("Content-Type", "Application/JSON")
-	json.NewEncoder(w).Encode(params)
+
+	rows, err := m.db.Query("SELECT id, center_lat, center_lng, zoom, title FROM adventureplan.maps WHERE id=?;", params["id"])
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
+	}
+
+	if !rows.Next() {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	thisMap, err := loadMapFromRow(rows, m.db)
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+		return
+	}
+	json.NewEncoder(w).Encode(thisMap)
+
+}
+
+func loadMapFromRow(rows *sql.Rows, db *sql.DB) (*Map, error) {
+	thisMap := Map{Center: MapPoint{}}
+	err := rows.Scan(&thisMap.ID, &thisMap.Center.Latitude, &thisMap.Center.Longitude, &thisMap.Zoom, &thisMap.Metadata.Title)
+	if err != nil {
+		return &Map{}, err
+	}
+
+	err = loadMapPoints(db, &thisMap)
+	if err != nil {
+		return &Map{}, err
+	}
+	return &thisMap, nil
+}
+
+func loadMapPoints(db *sql.DB, mapObject *Map) error {
+	pointsRS, err := db.Query("SELECT id, latitude, longitude, title, notes FROM adventureplan.points WHERE map_id = ?;", mapObject.ID)
+	if err != nil {
+		return err
+	}
+	for pointsRS.Next() {
+		var thisPoint = MapPoint{Metadata: MapPointMetadata{}}
+		err = pointsRS.Scan(&thisPoint.ID, &thisPoint.Latitude, &thisPoint.Longitude, &thisPoint.Metadata.Title, &thisPoint.Metadata.Notes)
+		mapObject.Interests = append(mapObject.Interests, &thisPoint)
+	}
+	return nil
 }
